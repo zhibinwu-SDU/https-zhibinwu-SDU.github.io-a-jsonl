@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSONL 结果查看器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+
+  /* ── 顶部栏 ── */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: #1a1d27;
+    border-bottom: 1px solid #2d3148;
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .topbar h1 { font-size: 15px; font-weight: 600; color: #a78bfa; flex: 1; }
+  .topbar .stats { font-size: 12px; color: #64748b; }
+
+  /* ── 上传区 ── */
+  #drop-zone {
+    margin: 40px auto;
+    max-width: 520px;
+    border: 2px dashed #3d4268;
+    border-radius: 16px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  #drop-zone:hover, #drop-zone.drag-over {
+    border-color: #7c3aed;
+    background: #1e1b3a;
+  }
+  #drop-zone .icon { font-size: 40px; margin-bottom: 12px; }
+  #drop-zone p { color: #94a3b8; font-size: 14px; }
+  #drop-zone p strong { color: #c4b5fd; }
+  #file-input { display: none; }
+
+  /* ── 主内容 ── */
+  #content { max-width: 1100px; margin: 0 auto; padding: 24px; display: none; }
+
+  /* ── 记录卡片 ── */
+  .record-card {
+    background: #1a1d27;
+    border: 1px solid #2d3148;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .record-header {
+    padding: 14px 20px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 12px;
+    user-select: none;
+    transition: background .15s;
+  }
+  .record-header:hover { background: #222540; }
+  .record-index {
+    background: #2d1b69;
+    color: #a78bfa;
+    font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px;
+    flex-shrink: 0;
+  }
+  .record-id { font-size: 14px; font-weight: 600; color: #e2e8f0; flex: 1; }
+  .record-meta { font-size: 11px; color: #64748b; flex-shrink: 0; }
+  .record-toggle { color: #475569; font-size: 12px; transition: transform .2s; }
+  .record-card.open .record-toggle { transform: rotate(90deg); }
+  .record-body { display: none; padding: 0 20px 16px; }
+  .record-card.open .record-body { display: block; }
+
+  /* ── 顶层字段 ── */
+  .top-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .tag {
+    font-size: 11px; padding: 3px 10px; border-radius: 20px;
+    background: #1e293b; border: 1px solid #334155; color: #94a3b8;
+  }
+  .tag.success { background: #052e16; border-color: #166534; color: #4ade80; }
+  .tag.fail { background: #2d0707; border-color: #7f1d1d; color: #f87171; }
+  .tag.spk { background: #0c1a2e; border-color: #1e3a5f; color: #60a5fa; }
+
+  /* ── 人设块 ── */
+  .persona-block {
+    background: #13162a;
+    border: 1px solid #2d3a5a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    font-size: 13px; color: #93c5fd; line-height: 1.6;
+  }
+  .persona-block .label { font-size: 11px; color: #475569; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* ── 包装块 ── */
+  .pkg-block {
+    background: #1c1430;
+    border: 1px solid #3b2670;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .pkg-item { font-size: 12px; }
+  .pkg-item .k { color: #7c3aed; margin-right: 4px; }
+  .pkg-item .v { color: #ddd6fe; }
+
+  /* ── 内容结构 ── */
+  .section-title {
+    font-size: 11px; color: #475569; text-transform: uppercase;
+    letter-spacing: .08em; margin: 14px 0 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: #2d3148;
+  }
+
+  /* ── 段落手风琴 ── */
+  .seg-accordion { margin-bottom: 6px; border-radius: 8px; overflow: hidden; border: 1px solid #252840; }
+  .seg-header {
+    padding: 10px 14px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    background: #1e2133;
+    user-select: none;
+    transition: background .15s;
+  }
+  .seg-header:hover { background: #252840; }
+  .seg-name { font-size: 13px; font-weight: 600; color: #c4b5fd; flex: 1; }
+  .seg-time {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    background: #0a1628; border: 1px solid #1e3a5f; color: #60a5fa;
+    font-variant-numeric: tabular-nums; flex-shrink: 0;
+  }
+  .seg-toggle { color: #334155; font-size: 10px; transition: transform .2s; }
+  .seg-accordion.open .seg-toggle { transform: rotate(90deg); }
+  .seg-body { display: none; padding: 12px 14px; background: #161929; }
+  .seg-accordion.open .seg-body { display: block; }
+
+  /* ── 字段行 ── */
+  .field-row { margin-bottom: 10px; }
+  .field-key {
+    font-size: 11px; color: #475569; margin-bottom: 3px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .field-key .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .field-val { font-size: 13px; line-height: 1.65; }
+
+  /* 字段颜色系统 */
+  .fv-voiceover .dot { background: #a78bfa; }
+  .fv-voiceover .field-val { color: #e2e8f0; }
+
+  .fv-cut .dot { background: #34d399; }
+  .fv-cut .field-val { color: #a7f3d0; }
+
+  .fv-scene .dot { background: #fb923c; }
+  .fv-scene .field-val { color: #fed7aa; white-space: pre-line; }
+
+  .fv-sfx .dot { background: #f472b6; }
+  .fv-sfx .field-val { color: #fbcfe8; }
+
+  .fv-mode .dot { background: #38bdf8; }
+  .fv-mode .field-val { color: #bae6fd; }
+
+  .fv-original .dot { background: #facc15; }
+  .fv-original .field-val { color: #fef08a; }
+
+  .fv-jinju .dot { background: #f87171; }
+  .fv-jinju .field-val { color: #fca5a5; }
+
+  .fv-default .dot { background: #475569; }
+  .fv-default .field-val { color: #94a3b8; }
+
+  /* 列表型字段 */
+  .field-list { list-style: none; padding: 0; }
+  .field-list li {
+    padding: 4px 0 4px 12px;
+    border-left: 2px solid #2d3148;
+    margin-bottom: 4px;
+    font-size: 13px; color: #94a3b8; line-height: 1.5;
+  }
+  .field-list li:last-child { margin-bottom: 0; }
+
+  /* JSON 折叠 */
+  .raw-json-toggle {
+    display: inline-block; font-size: 11px; color: #475569;
+    cursor: pointer; margin-top: 8px; text-decoration: underline;
+  }
+  .raw-json { display: none; margin-top: 6px; background: #0a0d16; border-radius: 6px;
+    padding: 10px; font-size: 11px; color: #64748b; font-family: monospace;
+    white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+  .raw-json.show { display: block; }
+
+  /* 搜索栏 */
+  #search {
+    background: #12151f; border: 1px solid #2d3148; color: #e2e8f0;
+    padding: 6px 12px; border-radius: 8px; font-size: 13px; width: 220px;
+    outline: none;
+  }
+  #search:focus { border-color: #7c3aed; }
+
+  /* 无结果 */
+  .empty { text-align: center; color: #475569; padding: 40px; font-size: 14px; }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0f1117; }
+  ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>📄 JSONL 结果查看器</h1>
+  <input id="search" type="text" placeholder="搜索 data_id…" oninput="filterRecords(this.value)">
+  <span class="stats" id="stats"></span>
+</div>
+
+<!-- 上传区 -->
+<div id="drop-zone" onclick="document.getElementById('file-input').click()">
+  <div class="icon">📂</div>
+  <p><strong>点击选择</strong> 或将 .jsonl 文件拖拽到此处</p>
+  <p style="margin-top:8px;font-size:12px;">支持多条记录，自动展开内容结构</p>
+  <input type="file" id="file-input" accept=".jsonl,.json">
+</div>
+
+<div id="content"></div>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const contentEl = document.getElementById('content');
+const statsEl = document.getElementById('stats');
+
+let allRecords = [];
+
+// ── 拖拽上传 ──
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split('\n').filter(l => l.trim());
+    allRecords = lines.map((l, i) => { try { return JSON.parse(l); } catch { return { _parseError: l, _idx: i }; } });
+    renderAll(allRecords);
+    dropZone.style.display = 'none';
+    contentEl.style.display = 'block';
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+// ── 搜索过滤 ──
+function filterRecords(q) {
+  const lower = q.toLowerCase();
+  const filtered = q ? allRecords.filter(r => JSON.stringify(r).toLowerCase().includes(lower)) : allRecords;
+  renderAll(filtered);
+}
+
+// ── 渲染所有记录 ──
+function renderAll(records) {
+  statsEl.textContent = `共 ${records.length} 条记录`;
+  if (!records.length) { contentEl.innerHTML = '<div class="empty">没有匹配的记录</div>'; return; }
+  contentEl.innerHTML = records.map((r, i) => renderRecord(r, i)).join('');
+  bindToggle('.record-header', 'record-card');
+  bindToggle('.seg-header', 'seg-accordion');
+  document.querySelectorAll('.raw-json-toggle').forEach(el => {
+    el.addEventListener('click', () => {
+      const pre = el.nextElementSibling;
+      pre.classList.toggle('show');
+      el.textContent = pre.classList.contains('show') ? '收起原始数据' : '查看原始数据';
+    });
+  });
+}
+
+function bindToggle(headerSel, parentClass) {
+  document.querySelectorAll(headerSel).forEach(h => {
+    h.addEventListener('click', () => {
+      const card = h.closest('.' + parentClass);
+      card.classList.toggle('open');
+    });
+  });
+}
+
+// ── 渲染单条记录 ──
+function renderRecord(r, idx) {
+  if (r._parseError) {
+    return `<div class="record-card">
+      <div class="record-header">
+        <span class="record-index">#${idx+1}</span>
+        <span class="record-id" style="color:#f87171">JSON 解析失败</span>
+      </div>
+      <div class="record-body"><pre style="color:#64748b;font-size:11px">${esc(r._parseError)}</pre></div>
+    </div>`;
+  }
+
+  // 兼容有 merged_result 包装层 和 无包装层两种格式
+  const mr = r.merged_result || r;
+  const dataId = r.data_id || mr.data_id || `记录 #${idx+1}`;
+  const success = r.success !== undefined ? r.success : true;
+  const error = r.error;
+  const upzhu = r.upzhu_spk || '';
+  const segments = Object.entries(mr['内容结构'] || {});
+  const jinju = mr['金句候选'] || [];
+
+  let topTags = `
+    <span class="tag ${success ? 'success' : 'fail'}">${success ? '✓ 成功' : '✗ 失败'}</span>
+    ${upzhu ? `<span class="tag spk">UP主 spk${upzhu}</span>` : ''}
+    <span class="tag">${segments.length} 个段落</span>
+    ${jinju.length ? `<span class="tag">${jinju.length} 条金句</span>` : ''}
+  `;
+
+  // 解说人设
+  let personaHtml = '';
+  if (mr['解说人设']) {
+    personaHtml = `<div class="persona-block"><div class="label">解说人设</div>${esc(mr['解说人设'])}</div>`;
+  }
+
+  // 视频包装还原
+  let pkgHtml = '';
+  const pkg = mr['视频包装还原'];
+  if (pkg && typeof pkg === 'object' && Object.keys(pkg).length) {
+    const items = Object.entries(pkg).map(([k,v]) =>
+      `<span class="pkg-item"><span class="k">${esc(k)}</span><span class="v">${esc(String(v))}</span></span>`
+    ).join('');
+    pkgHtml = `<div class="section-title">视频包装还原</div><div class="pkg-block">${items}</div>`;
+  }
+
+  // 内容结构段落
+  let segsHtml = '';
+  if (segments.length) {
+    segsHtml = `<div class="section-title">内容结构（${segments.length}段）</div>` +
+      segments.map(([name, seg]) => renderSegment(name, seg)).join('');
+  }
+
+  // 金句候选
+  let jinJuHtml = '';
+  if (jinju.length) {
+    jinJuHtml = `<div class="section-title">金句候选</div>
+      <ul class="field-list">${jinju.map(j => `<li>${esc(String(j))}</li>`).join('')}</ul>`;
+  }
+
+  // 错误信息
+  let errorHtml = error ? `<div style="color:#f87171;font-size:12px;margin-top:8px">错误: ${esc(error)}</div>` : '';
+
+  return `
+  <div class="record-card">
+    <div class="record-header">
+      <span class="record-index">#${idx+1}</span>
+      <span class="record-id">${esc(dataId)}</span>
+      <span class="record-meta">${segments.length}段</span>
+      <span class="record-toggle">▶</span>
+    </div>
+    <div class="record-body">
+      <div class="top-fields">${topTags}</div>
+      ${errorHtml}
+      ${personaHtml}
+      ${pkgHtml}
+      ${segsHtml}
+      ${jinJuHtml}
+      <span class="raw-json-toggle">查看原始数据</span>
+      <pre class="raw-json">${esc(JSON.stringify(r, null, 2))}</pre>
+    </div>
+  </div>`;
+}
+
+// ── 渲染单个段落 ──
+function renderSegment(name, seg) {
+  if (!seg || typeof seg !== 'object') return '';
+  const time = seg['脚本时间轴'] || '';
+  const fields = Object.entries(seg).filter(([k]) => k !== '脚本时间轴');
+
+  const fieldsHtml = fields.map(([k, v]) => renderField(k, v)).join('');
+
+  return `
+  <div class="seg-accordion">
+    <div class="seg-header">
+      <span class="seg-name">${esc(name)}</span>
+      ${time ? `<span class="seg-time">⏱ ${esc(time)}</span>` : ''}
+      <span class="seg-toggle">▶</span>
+    </div>
+    <div class="seg-body">${fieldsHtml}</div>
+  </div>`;
+}
+
+// ── 渲染字段 ──
+const FIELD_CLASS = {
+  '画外音文案': 'fv-voiceover',
+  '剪辑要点':   'fv-cut',
+  '画面建议':   'fv-scene',
+  '原片画面素材建议': 'fv-scene',
+  '音效建议':   'fv-sfx',
+  '音画配合模式': 'fv-mode',
+  '音画模式':   'fv-mode',
+  '原片原声':   'fv-original',
+  '额外素材':   'fv-original',
+  '金句候选':   'fv-jinju',
+};
+
+function renderField(key, val) {
+  const cls = FIELD_CLASS[key] || 'fv-default';
+
+  let valHtml;
+  if (Array.isArray(val)) {
+    if (!val.length) return '';
+    valHtml = `<ul class="field-list">${val.map(item => `<li>${esc(String(item))}</li>`).join('')}</ul>`;
+  } else if (typeof val === 'object' && val !== null) {
+    // 嵌套对象（如脚本序列）
+    valHtml = `<pre style="font-size:11px;color:#64748b;white-space:pre-wrap">${esc(JSON.stringify(val, null, 2))}</pre>`;
+  } else if (typeof val === 'string' && val.includes('\n')) {
+    valHtml = `<div class="field-val">${esc(val)}</div>`;
+  } else {
+    valHtml = `<div class="field-val">${esc(String(val))}</div>`;
+  }
+
+  return `
+  <div class="field-row ${cls}">
+    <div class="field-key"><span class="dot"></span>${esc(key)}</div>
+    ${valHtml}
+  </div>`;
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>
